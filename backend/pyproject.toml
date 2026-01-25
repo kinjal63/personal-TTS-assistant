@@ -1,0 +1,19 @@
+[project]
+name = "tts-assistant-backend"
+version = "0.1.0"
+description = "Personal AI TTS Assistant Backend"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
