@@ -5,7 +5,8 @@
   "description": "Convert web articles to natural speech with AI-powered Text-to-Speech",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "offscreen"
   ],
   "host_permissions": [
     "http://localhost:8000/*",
