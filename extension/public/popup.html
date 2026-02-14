@@ -70,31 +70,70 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 16px;
-      margin-bottom: 16px;
+      gap: 12px;
+      margin-bottom: 12px;
     }
 
     .play-btn {
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: #0f3460;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       border: none;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: background 0.2s;
+      transition: all 0.2s;
     }
 
     .play-btn:hover {
-      background: #1a4a7a;
+      transform: scale(1.05);
+    }
+
+    .play-btn.playing {
+      background: linear-gradient(135deg, #e94560 0%, #d63447 100%);
     }
 
     .play-btn svg {
       width: 24px;
       height: 24px;
       fill: #fff;
+    }
+
+    .skip-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #16213e;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      font-size: 18px;
+      color: #fff;
+    }
+
+    .skip-btn:hover {
+      background: #0f3460;
+      transform: scale(1.05);
+    }
+
+    .skip-btn .skip-label {
+      font-size: 8px;
+      color: #888;
+      margin-top: 2px;
+    }
+
+    .time-display {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 8px;
     }
 
     .progress-bar {
@@ -181,15 +220,28 @@
       </div>
 
       <div class="controls">
+        <button id="rewind-btn" class="skip-btn" title="Rewind 10 seconds">
+          <span>⏮</span>
+          <span class="skip-label">-10s</span>
+        </button>
         <button id="play-btn" class="play-btn" title="Play">
           <svg viewBox="0 0 24 24" id="play-icon">
             <path d="M8 5v14l11-7z"/>
           </svg>
         </button>
+        <button id="forward-btn" class="skip-btn" title="Forward 10 seconds">
+          <span>⏭</span>
+          <span class="skip-label">+10s</span>
+        </button>
       </div>
 
-      <div class="progress-bar">
+      <div class="progress-bar" id="progress-bar">
         <div id="progress" class="progress-fill"></div>
+      </div>
+
+      <div class="time-display">
+        <span id="current-time">0:00</span>
+        <span id="total-time">0:00</span>
       </div>
 
       <div class="settings">

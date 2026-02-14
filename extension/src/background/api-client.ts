@@ -128,6 +128,36 @@ export async function fetchVoices(): Promise<Array<{ id: string; name: string }>
   return data.voices;
 }
 
+/**
+ * Generate audio for a single text chunk directly
+ * This is faster than the chunks/generate endpoint because it doesn't
+ * require sending the entire text and re-chunking on the backend
+ */
+export async function generateAudioForChunk(
+  text: string,
+  voice: string,
+  speed: number
+): Promise<ArrayBuffer> {
+  const response = await fetch(`${API_BASE}/v1/tts/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text,
+      voice,
+      speed,
+      format_text: true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`TTS generation failed: ${response.status}`);
+  }
+
+  return response.arrayBuffer();
+}
+
 export async function checkHealth(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE}/health`);

@@ -1,19 +1,74 @@
 import re
 from typing import List, Tuple
+import html.parser
+
+
+class HTMLToText(html.parser.HTMLParser):
+    """Convert HTML to plain text with preserved structure"""
+    def __init__(self):
+        super().__init__()
+        self.text = []
+        self.in_script = False
+        self.in_style = False
+
+    def handle_starttag(self, tag, _attrs):
+        # Skip script and style content
+        if tag in ('script', 'style'):
+            if tag == 'script':
+                self.in_script = True
+            elif tag == 'style':
+                self.in_style = True
+        # Paragraph breaks
+        elif tag == 'p':
+            self.text.append('\n\n')
+        # Line breaks
+        elif tag == 'br':
+            self.text.append('\n')
+        # List items
+        elif tag == 'li':
+            self.text.append('\n')
+        # Divs often represent sections
+        elif tag == 'div':
+            self.text.append('\n')
+
+    def handle_endtag(self, tag):
+        if tag == 'script':
+            self.in_script = False
+        elif tag == 'style':
+            self.in_style = False
+        # Add line break after block elements
+        elif tag in ('p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li'):
+            self.text.append('\n')
+
+    def handle_data(self, data):
+        # Ignore script/style content
+        if not self.in_script and not self.in_style:
+            self.text.append(data)
+
+    def get_text(self):
+        return ''.join(self.text)
 
 
 class ProsodyFormatter:
     """Prepare text for natural-sounding TTS output with proper pauses and formatting"""
 
-    # Pause durations (in dots for natural speech pauses)
-    PAUSE_SHORT = "..."        # ~300ms pause
-    PAUSE_MEDIUM = "....."     # ~500ms pause
-    PAUSE_LONG = "......."     # ~700ms pause
-    PAUSE_PARAGRAPH = "........." # ~1s pause
+    # Pause placeholders (removed at the end, TTS relies on natural punctuation)
+    # Using unique markers that won't be affected by text cleaning
+    PAUSE_SHORT = ' XPAUSESHORTX '
+    PAUSE_MEDIUM = ' XPAUSEMEDIUMX '
+    PAUSE_LONG = ' XPAUSELONGX '
+    PAUSE_PARAGRAPH = ' XPAUSEPARAGRAPHX '
 
     def format(self, text: str) -> str:
         """Apply all formatting rules for TTS"""
+        # Convert HTML to text if input is HTML
+        if '<' in text and '>' in text:
+            parser = HTMLToText()
+            parser.feed(text)
+            text = parser.get_text()
+
         text = self._normalize_whitespace(text)
+        text = self._format_headers(text)  # Handle headers before cleaning
         text = self._convert_bullets_to_numbers(text)
         text = self._handle_abbreviations(text)
         text = self._add_punctuation_pauses(text)
@@ -22,6 +77,8 @@ class ProsodyFormatter:
         text = self._format_numbers(text)
         text = self._clean_for_speech(text)
         text = self._add_paragraph_pauses(text)
+        text = self._convert_pauses_to_ssml(text)  # Clean up pause placeholders
+
         return text.strip()
 
     def _normalize_whitespace(self, text: str) -> str:
@@ -32,6 +89,51 @@ class ProsodyFormatter:
         text = re.sub(r'\r\n', '\n', text)
         # Keep paragraph breaks (2+ newlines)
         text = re.sub(r'\n{3,}', '\n\n', text)
+        return text
+
+    def _format_headers(self, text: str) -> str:
+        """Format headers for engaging TTS with announcements"""
+        def replace_header(match):
+            level = len(match.group(1))
+            header_text = match.group(2).strip()
+
+            # Different announcements based on header level
+            if level == 1:  # h1 - main sections
+                return f"\n\nNext section. {self.PAUSE_MEDIUM} {header_text}.\n\n"
+            elif level == 2:  # h2 - subsections
+                return f"\n\nNext. {self.PAUSE_SHORT} {header_text}.\n\n"
+            else:  # h3+ - minor headers
+                return f"\n\n {self.PAUSE_SHORT} {header_text}.\n\n"
+
+        # Match markdown headers (# Header, ## Header, etc.)
+        text = re.sub(r'^(#{1,6})\s+(.+)$', replace_header, text, flags=re.MULTILINE)
+
+        # Also handle HTML-style headers if present
+        text = re.sub(r'<h[1-2][^>]*>(.+?)</h[1-2]>',
+                     lambda m: f"\n\nNext section. {self.PAUSE_MEDIUM} {m.group(1)}.\n\n",
+                     text, flags=re.IGNORECASE)
+        text = re.sub(r'<h[3-6][^>]*>(.+?)</h[3-6]>',
+                     lambda m: f"\n\n{m.group(1)}.\n\n",
+                     text, flags=re.IGNORECASE)
+
+        # Detect plain text headers (lines without ending punctuation, followed by blank line)
+        # Pattern: Short line (< 100 chars), no ending punctuation, followed by paragraph break
+        def fix_plain_header(match):
+            header_line = match.group(1).strip()
+            # Add period to ensure pause
+            return f"{header_line}.\n\n"
+
+        # Match lines that:
+        # - Don't end with punctuation (.!?;:,)
+        # - Are followed by blank line (paragraph break)
+        # - Are relatively short (< 100 chars, typical header length)
+        text = re.sub(
+            r'^(.{1,100}[^.!?;:,\s])\s*\n\n',
+            fix_plain_header,
+            text,
+            flags=re.MULTILINE
+        )
+
         return text
 
     def _convert_bullets_to_numbers(self, text: str) -> str:
@@ -83,9 +185,9 @@ class ProsodyFormatter:
     def _handle_abbreviations(self, text: str) -> str:
         """Expand common abbreviations for clearer speech"""
         abbreviations = {
-            r'\be\.g\.\s*': 'for example, ',
-            r'\bi\.e\.\s*': 'that is, ',
-            r'\betc\.\s*': 'etcetera. ',
+            r'\be\.g\.\s*': 'for example ',
+            r'\bi\.e\.\s*': 'that is ',
+            r'\betc\.\s*': 'etcetera ',
             r'\bvs\.\s*': 'versus ',
             r'\bDr\.\s+': 'Doctor ',
             r'\bMr\.\s+': 'Mister ',
@@ -115,25 +217,51 @@ class ProsodyFormatter:
         return text
 
     def _add_punctuation_pauses(self, text: str) -> str:
-        """Add appropriate pauses after punctuation marks"""
-        # Comma: short pause
+        """Add appropriate pauses for all English punctuation marks"""
+
+        # Special handling for "and/or" before general slash handling
+        text = re.sub(r'\band\s*/\s*or\b', 'and or', text, flags=re.IGNORECASE)
+
+        # Numeric ratios (e.g., "50/50"): keep as-is, TTS handles naturally
+        # Already handled by not matching digits in the pattern below
+
+        # Forward slash between words: say "or" (but not in URLs or numeric ratios)
+        # Skip if preceded/followed by http, https, or digits only
+        text = re.sub(r'(?<!/)(?<!\d)(\b[a-zA-Z]+)\s*/\s*([a-zA-Z]+\b)(?!\d)(?!/)', r'\1 or \2', text)
+
+        # Dot: short pause (lighter for natural flow)
+        text = re.sub(r'\.(\s+)', rf'. {self.PAUSE_SHORT} \1', text)
+
+        # Comma: short pause (lighter for natural flow)
         text = re.sub(r',\s+', f', {self.PAUSE_SHORT} ', text)
 
-        # Semicolon: medium pause
-        text = re.sub(r';\s+', f'; {self.PAUSE_MEDIUM} ', text)
+        # Semicolon: short-medium pause
+        text = re.sub(r';\s+', f'; {self.PAUSE_SHORT} ', text)
 
-        # Colon: medium pause (for explanations)
-        text = re.sub(r':\s+', f': {self.PAUSE_MEDIUM} ', text)
+        # Colon: short-medium pause (for explanations and lists)
+        text = re.sub(r':\s+', f': {self.PAUSE_SHORT} ', text)
 
-        # Em dash or double dash: short pause
+        # Em dash or en dash: short pause for interruption/aside
         text = re.sub(r'\s*[—–]\s*', f' {self.PAUSE_SHORT} ', text)
         text = re.sub(r'\s*--\s*', f' {self.PAUSE_SHORT} ', text)
 
-        # Ellipsis: long pause
-        text = re.sub(r'\.\.\.+', f' {self.PAUSE_LONG} ', text)
+        # Parentheses: very brief pause for asides
+        # Opening parenthesis
+        text = re.sub(r'\(\s*', f'( {self.PAUSE_SHORT} ', text)
+        # Closing parenthesis (pause after)
+        text = re.sub(r'\s*\)', f' {self.PAUSE_SHORT} )', text)
 
-        # Period, exclamation, question: handled by TTS naturally, but ensure spacing
-        text = re.sub(r'([.!?])\s+', r'\1 ', text)
+        # Question mark and exclamation: ensure medium pause (more emphasis)
+        text = re.sub(r'([!?])\s+', rf'\1 {self.PAUSE_SHORT} ', text)
+
+        # Period: handled naturally by TTS, just ensure clean spacing
+        text = re.sub(r'\.(\s+)', r'. \1', text)
+
+        # En dash in ranges (e.g., "2020-2025"): say "to"
+        text = re.sub(r'(\d+)\s*[-–]\s*(\d+)', r'\1 to \2', text)
+
+        # Ellipsis: medium pause (thinking/trailing off)
+        text = re.sub(r'\.\.\.+', f' {self.PAUSE_MEDIUM} ', text)
 
         return text
 
@@ -148,9 +276,9 @@ class ProsodyFormatter:
             '=': ' equals ',
             '<': ' less than ',
             '>': ' greater than ',
-            '→': ' leads to ',
-            '←': ' comes from ',
-            '↔': ' goes both ways ',
+            '→': f' {self.PAUSE_SHORT} then ',
+            '←': ' from ',
+            '↔': ' and ',
             '✓': ' check ',
             '✗': ' cross ',
             '★': ' star ',
@@ -247,7 +375,7 @@ class ProsodyFormatter:
         text = re.sub(r'\*([^*]+)\*', r'\1', text)      # Italic
         text = re.sub(r'__([^_]+)__', r'\1', text)      # Bold
         text = re.sub(r'_([^_]+)_', r'\1', text)        # Italic
-        text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)  # Headers
+        # Headers are handled in _format_headers() earlier in the pipeline
 
         # Remove very long parenthetical content
         def shorten_parenthetical(match):
@@ -267,9 +395,34 @@ class ProsodyFormatter:
         return text
 
     def _add_paragraph_pauses(self, text: str) -> str:
-        """Add longer pauses between paragraphs"""
-        # Add pause after paragraph breaks
-        text = re.sub(r'\n\n+', f'\n\n{self.PAUSE_PARAGRAPH}\n\n', text)
+        """Add longer pauses between paragraphs and line breaks"""
+        # First, ensure all lines end with punctuation before line breaks
+        # This creates natural pauses at every line break
+
+        # For single line breaks: ensure line ends with period
+        def ensure_line_punctuation(match):
+            line_content = match.group(1).rstrip()
+            # Check if line already ends with punctuation
+            if line_content and not line_content[-1] in '.!?;:,':
+                return f"{line_content}...\n"  # Use ellipsis for pause effect
+            return match.group(0)
+
+        # Match lines followed by single newline (not paragraph break)
+        text = re.sub(r'^(.+?)(\n)(?!\n)', ensure_line_punctuation, text, flags=re.MULTILINE)
+
+        # For paragraph breaks (double newlines): add ellipsis for longer pause
+        text = re.sub(r'\n\n+', '...\n\n', text)
+
+        return text
+
+    def _convert_pauses_to_ssml(self, text: str) -> str:
+        """Remove pause placeholders - Edge TTS doesn't support SSML, relies on natural punctuation"""
+        # Simply remove the placeholders since punctuation is already present
+        # TTS engines naturally pause at periods, commas, etc.
+        text = text.replace(' XPAUSESHORTX ', ' ')
+        text = text.replace(' XPAUSEMEDIUMX ', ' ')
+        text = text.replace(' XPAUSELONGX ', ' ')
+        text = text.replace(' XPAUSEPARAGRAPHX ', '\n\n')  # Keep paragraph breaks
         return text
 
     def chunk_for_streaming(self, text: str, target_chars: int = 800) -> List[Tuple[int, str]]:
@@ -284,7 +437,7 @@ class ProsodyFormatter:
         formatted = self.format(text)
 
         # Split by paragraphs first
-        paragraphs = re.split(r'\n\n+', formatted)
+        paragraphs = re.split(r'\n+', formatted)
 
         chunks = []
         current_chunk = ""

@@ -1,6 +1,7 @@
 import { detectReadableContent } from './detector';
-import { showListenButton, removeListenButton, updateButtonState } from './ui';
+import { showListenButton, removeListenButton, updateButtonState, openExtensionPopup, updateModalPlayer } from './ui';
 import { ArticleContent, MessageType } from '../lib/types';
+import { detectAndInjectEmailUI, updateEmailPlayerState } from './email';
 
 let detectedArticle: ArticleContent | null = null;
 let lastUrl: string = window.location.href;
@@ -81,6 +82,8 @@ function scheduleDetection(delay: number) {
   }
   detectionTimeout = setTimeout(() => {
     detectAndShowButton();
+    // Also detect and inject email UI (runs in parallel)
+    detectAndInjectEmailUI();
     detectionTimeout = null;
   }, delay);
 }
@@ -108,22 +111,11 @@ function detectAndShowButton() {
   }
 }
 
-function handleListenClick() {
+async function handleListenClick() {
   if (!detectedArticle) return;
 
-  // Send message to background to start playing
-  chrome.runtime.sendMessage({
-    type: 'PLAY',
-    payload: {
-      article: detectedArticle,
-      settings: {
-        voice: 'en-US-JennyNeural',
-        speed: 1.0,
-      },
-    },
-  } as MessageType);
-
-  updateButtonState(true);
+  // Open extension popup automatically
+  await openExtensionPopup();
 }
 
 // Listen for messages from background/popup
@@ -135,6 +127,9 @@ chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendRespons
 
   if (message.type === 'STATE_UPDATE') {
     updateButtonState(message.payload.isPlaying);
+    updateModalPlayer(message.payload);
+    // Also update email player state
+    updateEmailPlayerState(message.payload);
     return true;
   }
 

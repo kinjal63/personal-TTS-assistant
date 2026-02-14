@@ -1,4 +1,4 @@
-import { ArticleContent } from '../lib/types';
+import { ArticleContent, PlayerState } from '../lib/types';
 
 const BUTTON_ID = 'tts-assistant-listen-btn';
 
@@ -71,7 +71,83 @@ export function updateButtonState(isPlaying: boolean): void {
     textSpan.textContent = isPlaying ? 'Playing...' : 'Listen';
   }
 
-  button.style.background = isPlaying
-    ? 'linear-gradient(135deg, #e94560 0%, #d63447 100%)'
-    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+  // Animate button during playback
+  if (isPlaying) {
+    button.style.background = 'linear-gradient(135deg, #e94560 0%, #d63447 100%)';
+    button.style.animation = 'pulse 2s ease-in-out infinite';
+
+    // Add keyframes if not already present
+    if (!document.getElementById('tts-pulse-keyframes')) {
+      const style = document.createElement('style');
+      style.id = 'tts-pulse-keyframes';
+      style.textContent = `
+        @keyframes pulse {
+          0%, 100% { box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4); transform: scale(1); }
+          50% { box-shadow: 0 6px 25px rgba(233, 69, 96, 0.6); transform: scale(1.02); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  } else {
+    button.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+    button.style.animation = 'none';
+  }
+}
+
+export async function openExtensionPopup(): Promise<void> {
+  // In Manifest V3, chrome.action.openPopup() requires user gesture
+  // Since we're in a click handler, we can try to use it directly
+  try {
+    // First, try to open popup from background (requires user gesture context)
+    chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
+
+    // Show a brief notification that popup is opening
+    // showTemporaryNotification('Opening TTS Assistant...');
+  } catch (error) {
+    console.log('[TTS Assistant] Could not open popup automatically');
+    showTemporaryNotification('Click the extension icon to start playback');
+  }
+}
+
+function showTemporaryNotification(message: string): void {
+  const notification = document.createElement('div');
+  notification.textContent = message;
+
+  Object.assign(notification.style, {
+    position: 'fixed',
+    bottom: '90px',
+    right: '20px',
+    padding: '12px 20px',
+    background: '#16213e',
+    color: '#eee',
+    borderRadius: '8px',
+    zIndex: '2147483646',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontSize: '13px',
+    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.3)',
+    opacity: '0',
+    transition: 'opacity 0.3s',
+  });
+
+  document.body.appendChild(notification);
+
+  // Fade in
+  setTimeout(() => {
+    notification.style.opacity = '1';
+  }, 10);
+
+  // Fade out and remove after 2 seconds
+  setTimeout(() => {
+    notification.style.opacity = '0';
+    setTimeout(() => notification.remove(), 300);
+  }, 2000);
+}
+
+export function updateModalPlayer(state: PlayerState): void {
+  // This function is kept for backward compatibility with content/index.ts
+  // It now does nothing since we removed the modal
+}
+
+export function closeModalPlayer(): void {
+  // This function is kept for backward compatibility
 }
